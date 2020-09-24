@@ -6,7 +6,7 @@ let app
 fetch('/api/init_state').then(res=>res.json()).then(res=>{
   app = Elm.Main.init({
     node: document.getElementById('root'),
-    flags: res.users,
+    flags: res,
   });
 })
 
