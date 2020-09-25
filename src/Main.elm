@@ -2,9 +2,9 @@ module Main exposing (main)
 
 import Browser
 import Debug
-import Html exposing (Html, button, div, h1, img, p, span, text)
-import Html.Attributes exposing (class, src)
-import Html.Events exposing (onClick)
+import Html exposing (Html, button, div, h1, img, input, label, p, span, text)
+import Html.Attributes exposing (class, src, type_, value)
+import Html.Events exposing (onClick, onInput)
 import Json.Decode as J
 import Json.Decode.Pipeline as P
 import List exposing (map)
@@ -66,6 +66,7 @@ type alias Deal =
     , sellerId : Int
     , buyerId : Int
     , dealgoods : List Dealgood
+    , state : DealState
     }
 
 
@@ -77,6 +78,7 @@ dealDecoder =
         |> P.required "buyerId" J.int
         |> P.required "sellerId" J.int
         |> P.required "dealgoods" (J.list dealgoodDecoder)
+        |> P.required "state" dealstateDecoder
 
 
 dealsDecoder : J.Decoder (List Deal)
@@ -108,6 +110,32 @@ type DealState
     | Outdated
     | Fulfilled
     | OtherState String
+
+
+dealstateDecoder : J.Decoder DealState
+dealstateDecoder =
+    J.string
+        |> J.andThen
+            (\s ->
+                case s of
+                    "draft" ->
+                        J.succeed Draft
+
+                    "offered" ->
+                        J.succeed Offered
+
+                    "actual" ->
+                        J.succeed Actual
+
+                    "outdated" ->
+                        J.succeed Outdated
+
+                    "fulfilled" ->
+                        J.succeed Fulfilled
+
+                    _ ->
+                        J.succeed <| OtherState s
+            )
 
 
 ruDealState state =
@@ -178,6 +206,7 @@ type alias Model =
     , loggedUser : Maybe User
     , deals : List Deal
     , goods : List Good
+    , authData : { username : String, password : String }
     }
 
 
@@ -211,6 +240,7 @@ init value =
       , loggedUser = loggedUser
       , deals = deals
       , goods = goods
+      , authData = { username = "", password = "" }
       }
     , Cmd.none
     )
@@ -223,6 +253,8 @@ init value =
 type Msg
     = NoOp
     | SetTab Tab
+    | UpdateAuthUsername String
+    | UpdateAuthPassword String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -233,6 +265,20 @@ update msg model =
 
         SetTab tab ->
             ( { model | tab = tab }, Cmd.none )
+
+        UpdateAuthUsername name ->
+            let
+                authData =
+                    model.authData
+            in
+            ( { model | authData = { authData | username = name } }, Cmd.none )
+
+        UpdateAuthPassword pass ->
+            let
+                authData =
+                    model.authData
+            in
+            ( { model | authData = { authData | password = pass } }, Cmd.none )
 
 
 
@@ -250,15 +296,12 @@ view model =
                 DealsTab ->
                     case model.loggedUser of
                         Nothing ->
-                            text "Login"
+                            viewLogin model.authData
 
                         Just loggedUser ->
                             let
                                 findCounterpart =
                                     dealCounterpart loggedUser model.users
-
-                                -- imSeller =
-                                --     loggedIsSeller loggedUser
                             in
                             div [ class "users-list" ]
                                 (map
@@ -269,33 +312,6 @@ view model =
 
                                             Just user ->
                                                 viewDeal loggedUser user deal
-                                     -- [ viewUserImg user
-                                     -- , div [ class "deal-info" ]
-                                     --     [ p [ class "deal-info__p" ]
-                                     --         [ text <|
-                                     --             "№ "
-                                     --                 ++ String.fromInt deal.id
-                                     --                 ++ " "
-                                     --                 ++ (Maybe.withDefault ""
-                                     --                         deal.accepted
-                                     --                         |> formatDate
-                                     --                    )
-                                     --         ]
-                                     --     , p [ class "deal-info__p user__name" ]
-                                     --         [ text <| userFullname user ]
-                                     --     ]
-                                     -- , span [ class "deal__total" ]
-                                     --     [ text <|
-                                     --         (if imSeller deal then
-                                     --             "+"
-                                     --          else
-                                     --             "-"
-                                     --         )
-                                     --             ++ (String.fromFloat <|
-                                     --                     dealTotal deal
-                                     --                )
-                                     --     ]
-                                     -- ]
                                     )
                                     model.deals
                                 )
@@ -304,13 +320,41 @@ view model =
         [ loggedUserView model.loggedUser
         , div [ class "buttons-bar" ]
             [ button
-                [ onClick (SetTab UsersTab) ]
+                [ onClick (SetTab UsersTab), class "btn" ]
                 [ text <| "Users (" ++ String.fromInt (List.length model.users) ++ ")" ]
             , button
-                [ onClick (SetTab DealsTab) ]
+                [ onClick (SetTab DealsTab), class "btn" ]
                 [ text <| "Deals (" ++ String.fromInt (List.length model.deals) ++ ")" ]
             ]
         , pageView
+        ]
+
+
+viewLogin : { username : String, password : String } -> Html Msg
+viewLogin authData =
+    div [ class "login" ]
+        [ div [ class "mb10" ]
+            [ div [ class "input-group" ]
+                [ label [ class "input-group__label" ] [ text "Username" ]
+                , input
+                    [ class "input-group__input"
+                    , value authData.username
+                    , onInput UpdateAuthUsername
+                    ]
+                    []
+                ]
+            , div [ class "input-group" ]
+                [ label [ class "input-group__label" ] [ text "Password" ]
+                , input
+                    [ class "input-group__input"
+                    , type_ "password"
+                    , value authData.password
+                    , onInput UpdateAuthPassword
+                    ]
+                    []
+                ]
+            ]
+        , div [] [ button [ class "btn btn--blue" ] [ text "Войти" ] ]
         ]
 
 
@@ -350,6 +394,7 @@ viewUser user =
         ]
 
 
+viewUserImg : User -> Html Msg
 viewUserImg user =
     case user.img of
         Nothing ->
@@ -408,10 +453,12 @@ dealCounterpart loggedUser users deal =
         Nothing
 
 
+userFullname : User -> String
 userFullname user =
     user.lastName ++ " " ++ user.firstName
 
 
+formatDate : String -> String
 formatDate date =
     String.split "-" date
         |> List.drop 1
@@ -419,10 +466,12 @@ formatDate date =
         |> String.join "."
 
 
+dealTotal : Deal -> Float
 dealTotal deal =
     List.sum <| map (\dg -> dg.q * dg.price) deal.dealgoods
 
 
+loggedIsSeller : User -> Deal -> Bool
 loggedIsSeller user deal =
     user.id == deal.sellerId
 
