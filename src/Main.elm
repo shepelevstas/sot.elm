@@ -2,7 +2,7 @@ module Main exposing (main)
 
 import Browser
 import Debug
-import Html exposing (Html, button, div, h1, img, input, label, p, span, text)
+import Html exposing (Html, button, div, img, input, label, p, span, text)
 import Html.Attributes exposing (class, src, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Json.Decode as J
@@ -371,11 +371,14 @@ viewDeal loggedUser user deal =
                     [ text <| userFullname user ]
                 ]
             ]
-        , div [ class "grow deal__total" ]
-            [ text <|
-                iif (loggedIsSeller loggedUser deal) "+" "-"
-                    ++ (String.fromFloat <| dealTotal deal)
-            ]
+        , let
+            ( cls, txt ) =
+                iif (loggedIsSeller loggedUser deal)
+                    ( " deal__total--income", "+" )
+                    ( "", "" )
+          in
+          div [ class <| "grow deal__total" ++ cls ]
+            [ text <| txt ++ (String.fromFloat <| dealTotal deal) ]
         ]
 
 

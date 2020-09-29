@@ -66,6 +66,10 @@ body {
   text-align: right;
 }
 
+.deal__total--income {
+  color: forestgreen;
+}
+
 
 
 .users-list {
