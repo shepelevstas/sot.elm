@@ -9,6 +9,7 @@ import Json.Decode as J
 import Json.Decode.Pipeline as P
 import List exposing (map)
 import Maybe exposing (Maybe)
+import String.Extra exposing (stripTags)
 
 
 
@@ -67,6 +68,7 @@ type alias Deal =
     , buyerId : Int
     , dealgoods : List Dealgood
     , state : DealState
+    , details : String
     }
 
 
@@ -79,6 +81,7 @@ dealDecoder =
         |> P.required "sellerId" J.int
         |> P.required "dealgoods" (J.list dealgoodDecoder)
         |> P.required "state" dealstateDecoder
+        |> P.required "details" J.string
 
 
 dealsDecoder : J.Decoder (List Deal)
@@ -302,6 +305,9 @@ view model =
                             let
                                 findCounterpart =
                                     dealCounterpart loggedUser model.users
+
+                                viewDeal_ =
+                                    viewDeal model.goods loggedUser
                             in
                             div [ class "users-list" ]
                                 (map
@@ -311,7 +317,7 @@ view model =
                                                 div [ class "user" ] [ text "User Not Found" ]
 
                                             Just user ->
-                                                viewDeal loggedUser user deal
+                                                viewDeal_ user deal
                                     )
                                     model.deals
                                 )
@@ -319,12 +325,14 @@ view model =
     div [ class "root" ]
         [ loggedUserView model.loggedUser
         , div [ class "buttons-bar" ]
-            [ button
-                [ onClick (SetTab UsersTab), class "btn" ]
-                [ text <| "Users (" ++ String.fromInt (List.length model.users) ++ ")" ]
-            , button
-                [ onClick (SetTab DealsTab), class "btn" ]
-                [ text <| "Deals (" ++ String.fromInt (List.length model.deals) ++ ")" ]
+            [ div [ class "tabs-row" ]
+                [ button
+                    [ onClick (SetTab UsersTab), class "tabs-row__tab" ]
+                    [ text <| "Users (" ++ String.fromInt (List.length model.users) ++ ")" ]
+                , button
+                    [ onClick (SetTab DealsTab), class "tabs-row__tab" ]
+                    [ text <| "Deals (" ++ String.fromInt (List.length model.deals) ++ ")" ]
+                ]
             ]
         , pageView
         ]
@@ -358,10 +366,10 @@ viewLogin authData =
         ]
 
 
-viewDeal : User -> User -> Deal -> Html Msg
-viewDeal loggedUser user deal =
-    div [ class "user flex-center" ]
-        [ div []
+viewDeal : List Good -> User -> User -> Deal -> Html Msg
+viewDeal goods loggedUser user deal =
+    div [ class "user flex-center flex-center--nowrap" ]
+        [ div [ class "nowrap" ]
             [ viewUserImg user
             , div [ class "deal-info" ]
                 [ p [ class "deal-info__p" ]
@@ -371,13 +379,14 @@ viewDeal loggedUser user deal =
                     [ text <| userFullname user ]
                 ]
             ]
+        , div [ class "grow deal__short" ] [ text <| dealShort goods deal ]
         , let
             ( cls, txt ) =
                 iif (loggedIsSeller loggedUser deal)
                     ( " deal__total--income", "+" )
                     ( "", "" )
           in
-          div [ class <| "grow deal__total" ++ cls ]
+          div [ class <| "deal__total" ++ cls ]
             [ text <| txt ++ (String.fromFloat <| dealTotal deal) ]
         ]
 
@@ -486,3 +495,22 @@ iif bool a b =
 
     else
         b
+
+
+dealShort goods deal =
+    String.trim <|
+        stripTags deal.details
+            ++ " "
+            ++ (String.join ", " <|
+                    map
+                        (\dg ->
+                            let
+                                goodname =
+                                    find (\g -> g.id == dg.goodId) goods
+                                        |> Maybe.map .name
+                                        |> Maybe.withDefault "<not found>"
+                            in
+                            goodname ++ " (" ++ String.fromFloat dg.q ++ ")"
+                        )
+                        deal.dealgoods
+               )
