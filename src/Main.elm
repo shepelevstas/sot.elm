@@ -8,6 +8,7 @@ import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as J
 import Json.Decode.Pipeline as P
+import Json.Encode as JE
 import List exposing (map)
 import Maybe exposing (Maybe)
 import String.Extra exposing (stripTags)
@@ -213,6 +214,7 @@ type alias Model =
     , deals : List Deal
     , goods : List Good
     , authData : { username : String, password : String }
+    , csrftoken : String
     }
 
 
@@ -224,13 +226,14 @@ type Tab
 init : J.Value -> ( Model, Cmd Msg )
 init value =
     let
-        { users, loggedUser, deals, goods } =
+        { users, loggedUser, deals, goods, csrftoken } =
             case J.decodeValue initDataDecoder value of
                 Ok res ->
                     { users = res.users
                     , loggedUser = Maybe.andThen (\uid -> find (\u -> u.id == uid) res.users) res.loggedInUser
                     , deals = res.deals
                     , goods = res.goods
+                    , csrftoken = res.csrftoken
                     }
 
                 Err _ ->
@@ -238,6 +241,7 @@ init value =
                     , loggedUser = Nothing
                     , deals = []
                     , goods = []
+                    , csrftoken = ""
                     }
     in
     ( { tmp = "tmp"
@@ -247,9 +251,20 @@ init value =
       , deals = deals
       , goods = goods
       , authData = { username = "", password = "" }
+      , csrftoken = csrftoken
       }
     , Cmd.none
     )
+
+
+type LoginResponseData
+    = LoginFail String
+    | LoginDone LoggedUserData
+
+
+type LogoutResponseData
+    = LogoutFail
+    | LogoutDone
 
 
 
@@ -262,6 +277,9 @@ type Msg
     | UpdateAuthUsername String
     | UpdateAuthPassword String
     | Login
+    | LoginResponse (Result Http.Error LoginResponseData)
+    | Logout
+    | LogoutResponse (Result Http.Error LogoutResponseData)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -288,21 +306,148 @@ update msg model =
             ( { model | authData = { authData | password = pass } }, Cmd.none )
 
         Login ->
-            ( model, Cmd.none )
+            ( model, login model.csrftoken model.authData )
+
+        LoginResponse res ->
+            case res of
+                Ok (LoginDone loggedUserData) ->
+                    ( { model
+                        | loggedUser = find (\u -> u.id == loggedUserData.user.id) model.users
+                        , deals = loggedUserData.deals
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    let
+                        _ =
+                            Debug.log "Login failed with res:" res
+                    in
+                    ( model, Cmd.none )
+
+        Logout ->
+            ( model, logout model.csrftoken )
+
+        LogoutResponse res ->
+            case res of
+                Ok _ ->
+                    ( { model
+                        | deals = []
+                        , loggedUser = Nothing
+                      }
+                    , Cmd.none
+                    )
+
+                -- Ok LogoutFail ->
+                Err m ->
+                    let
+                        _ =
+                            Debug.log "err msg" m
+                    in
+                    ( model, Cmd.none )
 
 
+logout : String -> Cmd Msg
+logout token =
+    Http.request
+        { url = "/api/logout"
+        , method = "POST"
+        , headers = [ Http.header "X-CSRFToken" token ]
+        , body = Http.jsonBody logoutEncoder
+        , expect = Http.expectJson LogoutResponse logoutResponseDecoder
+        , timeout = Nothing
+        , tracker = Nothing
+        }
 
-login : String -> Cmd Msg
-login token =
+
+logoutEncoder =
+    JE.object
+        [ ( "logout", JE.bool True )
+        , ( "reqId", JE.int 1 )
+        ]
+
+
+logoutResponseDecoder =
+    J.field "logout" J.string
+        |> J.andThen
+            (\res ->
+                J.succeed <|
+                    case res of
+                        "OK" ->
+                            LogoutDone
+
+                        "FAIL" ->
+                            LogoutDone
+
+                        _ ->
+                            LogoutFail
+            )
+
+
+login : String -> { username : String, password : String } -> Cmd Msg
+login token authData =
     Http.request
         { url = "/api/login"
         , method = "POST"
-        , headers = [
-            Http.header "Content-Type" "application/json"
-            Http.header "X-CSRFToken" token
-            ]
-        , body =
+        , headers = [ Http.header "X-CSRFToken" token ]
+        , body = Http.jsonBody <| loginEncoder authData
+        , expect = Http.expectJson LoginResponse loginResponseDecoder
+        , timeout = Nothing
+        , tracker = Nothing
         }
+
+
+loginResponseDecoder : J.Decoder LoginResponseData
+loginResponseDecoder =
+    J.field "login" J.string
+        |> J.andThen
+            (\status ->
+                case status of
+                    "OK" ->
+                        J.map LoginDone loggedUserDataDecoder
+
+                    "FAIL" ->
+                        J.succeed <| LoginFail "login failed"
+
+                    _ ->
+                        J.succeed <| LoginFail "some other error"
+            )
+
+
+type alias LoggedUser =
+    { id : Int }
+
+
+type alias LoggedUserData =
+    { user : LoggedUser
+    , deals : List Deal
+    }
+
+
+loggedUserDecoder : J.Decoder LoggedUser
+loggedUserDecoder =
+    J.succeed LoggedUser
+        |> P.required "id" J.int
+
+
+loggedUserDataDecoder : J.Decoder LoggedUserData
+loggedUserDataDecoder =
+    J.succeed LoggedUserData
+        |> P.required "user" loggedUserDecoder
+        |> P.required "deals" (J.list dealDecoder)
+
+
+loginEncoder : { username : String, password : String } -> JE.Value
+loginEncoder { username, password } =
+    JE.object
+        [ ( "login", JE.bool True )
+        , ( "reqId", JE.int 0 )
+        , ( "id", JE.string username )
+        , ( "pass", JE.string password )
+        ]
+
+
+
 ---- VIEW ----
 
 
@@ -384,7 +529,7 @@ viewLogin authData =
                     ]
                 ]
             ]
-        , div [] [ button [ class "btn btn--blue" ] [ text "Войти" ] ]
+        , div [] [ button [ class "btn btn--blue", onClick Login ] [ text "Войти" ] ]
         ]
 
 
@@ -447,7 +592,7 @@ loggedUserView loggedUser =
 
             Just user ->
                 [ viewUser user
-                , button [] [ text "Выйти" ]
+                , button [ onClick Logout ] [ text "Выйти" ]
                 ]
         )
 
