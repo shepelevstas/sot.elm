@@ -187,6 +187,7 @@ type alias InitData =
     , loggedInUser : Maybe Int
     , deals : List Deal
     , goods : List Good
+    , csrftoken : String
     }
 
 
@@ -197,6 +198,7 @@ initDataDecoder =
         |> P.required "loggedInUser" (J.maybe J.int)
         |> P.optional "deals" dealsDecoder []
         |> P.required "goods" (J.list goodDecoder)
+        |> P.required "csrftoken" J.string
 
 
 
@@ -285,14 +287,22 @@ update msg model =
             in
             ( { model | authData = { authData | password = pass } }, Cmd.none )
 
+        Login ->
+            ( model, Cmd.none )
 
 
--- login : Cmd Msg
--- login =
---     Http.post
---         { url = "/api/login"
---         ,
---         }
+
+login : String -> Cmd Msg
+login token =
+    Http.request
+        { url = "/api/login"
+        , method = "POST"
+        , headers = [
+            Http.header "Content-Type" "application/json"
+            Http.header "X-CSRFToken" token
+            ]
+        , body =
+        }
 ---- VIEW ----
 
 
