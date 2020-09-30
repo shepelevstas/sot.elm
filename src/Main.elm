@@ -5,6 +5,7 @@ import Debug
 import Html exposing (Html, button, div, img, input, label, p, span, text)
 import Html.Attributes exposing (class, src, type_, value)
 import Html.Events exposing (onClick, onInput)
+import Http
 import Json.Decode as J
 import Json.Decode.Pipeline as P
 import List exposing (map)
@@ -258,6 +259,7 @@ type Msg
     | SetTab Tab
     | UpdateAuthUsername String
     | UpdateAuthPassword String
+    | Login
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -285,6 +287,12 @@ update msg model =
 
 
 
+-- login : Cmd Msg
+-- login =
+--     Http.post
+--         { url = "/api/login"
+--         ,
+--         }
 ---- VIEW ----
 
 
@@ -342,24 +350,28 @@ viewLogin : { username : String, password : String } -> Html Msg
 viewLogin authData =
     div [ class "login" ]
         [ div [ class "mb10" ]
-            [ div [ class "input-group" ]
-                [ label [ class "input-group__label" ] [ text "Username" ]
-                , input
-                    [ class "input-group__input"
-                    , value authData.username
-                    , onInput UpdateAuthUsername
+            [ div []
+                [ div [ class "input-group" ]
+                    [ label [ class "input-group__label" ] [ text "Username" ]
+                    , input
+                        [ class "input-group__input"
+                        , value authData.username
+                        , onInput UpdateAuthUsername
+                        ]
+                        []
                     ]
-                    []
                 ]
-            , div [ class "input-group" ]
-                [ label [ class "input-group__label" ] [ text "Password" ]
-                , input
-                    [ class "input-group__input"
-                    , type_ "password"
-                    , value authData.password
-                    , onInput UpdateAuthPassword
+            , div []
+                [ div [ class "input-group" ]
+                    [ label [ class "input-group__label" ] [ text "Password" ]
+                    , input
+                        [ class "input-group__input"
+                        , type_ "password"
+                        , value authData.password
+                        , onInput UpdateAuthPassword
+                        ]
+                        []
                     ]
-                    []
                 ]
             ]
         , div [] [ button [ class "btn btn--blue" ] [ text "Войти" ] ]

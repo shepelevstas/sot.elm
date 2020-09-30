@@ -127,6 +127,7 @@ body {
   color: darkgray;
   font-size: 80%;
   margin: 0;
+  margin-left: 1px;
   padding: 0;
   text-align: left;
 }
