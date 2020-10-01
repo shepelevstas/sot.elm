@@ -386,6 +386,16 @@ logoutResponseDecoder =
 
 login : String -> { username : String, password : String } -> Cmd Msg
 login token authData =
+    let
+        loginEncoder : { username : String, password : String } -> JE.Value
+        loginEncoder { username, password } =
+            JE.object
+                [ ( "login", JE.bool True )
+                , ( "reqId", JE.int 0 )
+                , ( "id", JE.string username )
+                , ( "pass", JE.string password )
+                ]
+    in
     Http.request
         { url = "/api/login"
         , method = "POST"
@@ -419,32 +429,21 @@ type alias LoggedUser =
 
 
 type alias LoggedUserData =
-    { user : LoggedUser
+    { user : { id : Int }
     , deals : List Deal
     }
 
 
-loggedUserDecoder : J.Decoder LoggedUser
+loggedUserDecoder : J.Decoder { id : Int }
 loggedUserDecoder =
-    J.succeed LoggedUser
-        |> P.required "id" J.int
+    J.field "id" J.int |> J.andThen (\id -> J.succeed { id = id })
 
 
 loggedUserDataDecoder : J.Decoder LoggedUserData
 loggedUserDataDecoder =
     J.succeed LoggedUserData
-        |> P.required "user" loggedUserDecoder
+        |> P.required "user" (J.field "id" J.int |> J.andThen (\id -> J.succeed { id = id }))
         |> P.required "deals" (J.list dealDecoder)
-
-
-loginEncoder : { username : String, password : String } -> JE.Value
-loginEncoder { username, password } =
-    JE.object
-        [ ( "login", JE.bool True )
-        , ( "reqId", JE.int 0 )
-        , ( "id", JE.string username )
-        , ( "pass", JE.string password )
-        ]
 
 
 
