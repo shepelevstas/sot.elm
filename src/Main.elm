@@ -5,6 +5,7 @@ import Debug
 import Html exposing (Html, button, div, img, input, label, p, span, text)
 import Html.Attributes exposing (class, src, style, type_, value)
 import Html.Events exposing (onClick, onInput)
+import Html.Events.Extra exposing (onClickStopPropagation)
 import Http
 import Json.Decode as J
 import Json.Decode.Pipeline as P
@@ -54,11 +55,6 @@ userDecoder =
         |> P.optional "sells" (J.list J.int) []
 
 
-usersDecoder : J.Decoder (List User)
-usersDecoder =
-    J.list userDecoder
-
-
 
 -- DEAL
 
@@ -84,11 +80,6 @@ dealDecoder =
         |> P.required "dealgoods" (J.list dealgoodDecoder)
         |> P.required "state" dealstateDecoder
         |> P.required "details" J.string
-
-
-dealsDecoder : J.Decoder (List Deal)
-dealsDecoder =
-    J.list dealDecoder
 
 
 type alias Dealgood =
@@ -217,9 +208,9 @@ type alias InitData =
 initDataDecoder : J.Decoder InitData
 initDataDecoder =
     J.succeed InitData
-        |> P.required "users" usersDecoder
+        |> P.required "users" (J.list userDecoder)
         |> P.required "loggedInUser" (J.maybe J.int)
-        |> P.optional "deals" dealsDecoder []
+        |> P.optional "deals" (J.list dealDecoder) []
         |> P.required "goods" (J.list goodDecoder)
         |> P.required "csrftoken" J.string
 
@@ -234,6 +225,7 @@ type alias Model =
     , users : List User
     , loggedUser : Maybe User
     , deals : List Deal
+    , showDeal : Maybe Deal
     , goods : List Good
     , authData : { username : String, password : String }
     , csrftoken : String
@@ -254,6 +246,7 @@ init value =
             , users = res.users
             , loggedUser = res.loggedInUser |> Maybe.andThen (\uid -> find (\u -> u.id == uid) res.users)
             , deals = res.deals
+            , showDeal = Nothing
             , goods = res.goods
             , authData = { username = "", password = "" }
             , csrftoken = res.csrftoken
@@ -265,6 +258,7 @@ init value =
             , users = []
             , loggedUser = Nothing
             , deals = []
+            , showDeal = Nothing
             , goods = []
             , authData = { username = "", password = "" }
             , csrftoken = ""
@@ -296,6 +290,8 @@ type Msg
     | LoginResponse (Result Http.Error LoginResponseData)
     | Logout
     | LogoutResponse (Result Http.Error LogoutResponseData)
+    | ShowDeal Deal
+    | HideDeal
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -361,6 +357,16 @@ update msg model =
                             Debug.log "err msg" m
                     in
                     ( model, Cmd.none )
+
+        ShowDeal deal ->
+            ( { model
+                | showDeal = Just deal
+              }
+            , Cmd.none
+            )
+
+        HideDeal ->
+            ( { model | showDeal = Nothing }, Cmd.none )
 
 
 post : String -> String -> Http.Body -> Http.Expect Msg -> Cmd Msg
@@ -457,11 +463,6 @@ type alias LoggedUserData =
     }
 
 
-loggedUserDecoder : J.Decoder { id : Int }
-loggedUserDecoder =
-    J.field "id" J.int |> J.andThen (\id -> J.succeed { id = id })
-
-
 loggedUserDataDecoder : J.Decoder LoggedUserData
 loggedUserDataDecoder =
     J.succeed LoggedUserData
@@ -508,7 +509,7 @@ view model =
                                 )
     in
     div [ class "root" ]
-        [ loggedUserView model.loggedUser
+        [ viewLoggedUser model.loggedUser
         , div [ class "buttons-bar" ]
             [ div [ class "tabs-row" ]
                 [ button
@@ -520,6 +521,83 @@ view model =
                 ]
             ]
         , pageView
+        , case model.showDeal of
+            Nothing ->
+                text ""
+
+            Just deal ->
+                viewDealFull model deal
+        ]
+
+
+viewDealFull : Model -> Deal -> Html Msg
+viewDealFull model deal =
+    div [ class "modal", onClick HideDeal ]
+        [ div [ class "modal__content", onClickStopPropagation NoOp ]
+            [ div [ class "card" ]
+                [ div [ class "card__title" ]
+                    [ viewDealStatusIndicator deal
+                    , viewDealTitle deal
+                    , div [ class "card__x", onClick HideDeal ]
+                        [ text "close"
+                        ]
+                    ]
+                , div [ class "card__content" ]
+                    [ case
+                        model.loggedUser
+                            |> Maybe.andThen
+                                (\loggedUser ->
+                                    dealCounterpart loggedUser model.users deal
+                                )
+                      of
+                        Nothing ->
+                            text "Other User Not Found"
+
+                        Just otherUser ->
+                            viewUser otherUser
+                    , p [] [ text deal.details ]
+                    , div []
+                        (div [ class "dealgood-row dealgood-row--title" ]
+                            [ span [ class "dealgood-row__name" ] [ text "name" ]
+                            , span [ class "dealgood-row__price" ] [ text "price" ]
+                            , span [ class "dealgood-row__q" ] [ text "q" ]
+                            ]
+                            :: (let
+                                    viewDealgood_ =
+                                        viewDealgood model.goods
+                                in
+                                map
+                                    viewDealgood_
+                                    deal.dealgoods
+                               )
+                        )
+                    , div [ class "buttons-row" ]
+                        [ button [ class "btn btn--blue", onClick HideDeal ] [ text "close" ]
+                        , button [ class "btn btn--blue" ] [ text "done" ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+
+viewDealgood : List Good -> Dealgood -> Html Msg
+viewDealgood goods dealgood =
+    let
+        goodname =
+            case
+                goods |> find (\g -> g.id == dealgood.goodId)
+            of
+                Nothing ->
+                    "<not found>"
+
+                Just good ->
+                    good.name
+    in
+    div [ class "dealgood-row" ]
+        [ span [ class "dealgood-row__name" ] [ text goodname ]
+        , span [ class "dealgood-row__price" ] [ text <| String.fromFloat dealgood.price ]
+        , span [ class "dealgood-row__q" ] [ text <| String.fromFloat dealgood.q ]
         ]
 
 
@@ -557,17 +635,13 @@ viewLogin authData =
 
 viewDeal : List Good -> User -> User -> Deal -> Html Msg
 viewDeal goods loggedUser user deal =
-    div [ class "user flex-center flex-center--nowrap" ]
+    div [ class "user flex-center flex-center--nowrap", onClick <| ShowDeal deal ]
         [ div [ class "nowrap" ]
             [ viewUserImg user
             , div [ class "deal-info" ]
                 [ p [ class "deal-info__p" ]
-                    [ div
-                        [ class "deal-info__state-color"
-                        , style "background-color" <| dealstateColor deal.state
-                        ]
-                        []
-                    , text <| String.trim <| "№ " ++ String.fromInt deal.id ++ " " ++ (Maybe.withDefault "" deal.accepted |> formatDate)
+                    [ viewDealStatusIndicator deal
+                    , viewDealTitle deal
                     ]
                 , p [ class "deal-info__p user__name" ]
                     [ text <| userFullname user ]
@@ -583,6 +657,20 @@ viewDeal goods loggedUser user deal =
           div [ class <| "deal__total" ++ cls ]
             [ text <| txt ++ (String.fromFloat <| dealTotal deal) ]
         ]
+
+
+viewDealStatusIndicator : Deal -> Html Msg
+viewDealStatusIndicator deal =
+    div
+        [ class "deal-info__state-color"
+        , style "background-color" <| dealstateColor deal.state
+        ]
+        []
+
+
+viewDealTitle : Deal -> Html Msg
+viewDealTitle deal =
+    text <| String.trim <| "№ " ++ String.fromInt deal.id ++ " " ++ (Maybe.withDefault "" deal.accepted |> formatDate)
 
 
 viewUsersList : List User -> Html Msg
@@ -610,8 +698,8 @@ viewUserImg user =
             img [ class "user__img", src url ] []
 
 
-loggedUserView : Maybe User -> Html Msg
-loggedUserView loggedUser =
+viewLoggedUser : Maybe User -> Html Msg
+viewLoggedUser loggedUser =
     div [ class "users-list" ]
         (case loggedUser of
             Nothing ->
