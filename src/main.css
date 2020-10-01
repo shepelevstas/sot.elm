@@ -67,6 +67,15 @@ body {
   color: darkgray;
 }
 
+.deal-info__state-color {
+  width: 9px;
+  height: 9px;
+  border-radius: 5px;
+  display: inline-block;
+  margin-right: 4px;
+  box-shadow: 0 0px 1.5px rgba(0,0,0,.3);
+}
+
 .deal__short {
   font-size: 80%;
   overflow: hidden;

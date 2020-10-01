@@ -3,7 +3,7 @@ module Main exposing (main)
 import Browser
 import Debug
 import Html exposing (Html, button, div, img, input, label, p, span, text)
-import Html.Attributes exposing (class, src, type_, value)
+import Html.Attributes exposing (class, src, style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as J
@@ -164,6 +164,28 @@ ruDealState state =
             s
 
 
+dealstateColor : DealState -> String
+dealstateColor state =
+    case state of
+        Draft ->
+            "#83d32e"
+
+        Offered ->
+            "#f1c917"
+
+        Actual ->
+            "#0789d4"
+
+        Outdated ->
+            "red"
+
+        Fulfilled ->
+            "#bbb"
+
+        _ ->
+            "red"
+
+
 
 -- GOOD
 
@@ -225,34 +247,28 @@ type Tab
 
 init : J.Value -> ( Model, Cmd Msg )
 init value =
-    let
-        { users, loggedUser, deals, goods, csrftoken } =
-            case J.decodeValue initDataDecoder value of
-                Ok res ->
-                    { users = res.users
-                    , loggedUser = Maybe.andThen (\uid -> find (\u -> u.id == uid) res.users) res.loggedInUser
-                    , deals = res.deals
-                    , goods = res.goods
-                    , csrftoken = res.csrftoken
-                    }
+    ( case J.decodeValue initDataDecoder value of
+        Ok res ->
+            { tmp = "tmp"
+            , tab = DealsTab
+            , users = res.users
+            , loggedUser = res.loggedInUser |> Maybe.andThen (\uid -> find (\u -> u.id == uid) res.users)
+            , deals = res.deals
+            , goods = res.goods
+            , authData = { username = "", password = "" }
+            , csrftoken = res.csrftoken
+            }
 
-                Err _ ->
-                    { users = []
-                    , loggedUser = Nothing
-                    , deals = []
-                    , goods = []
-                    , csrftoken = ""
-                    }
-    in
-    ( { tmp = "tmp"
-      , tab = DealsTab
-      , users = users
-      , loggedUser = loggedUser
-      , deals = deals
-      , goods = goods
-      , authData = { username = "", password = "" }
-      , csrftoken = csrftoken
-      }
+        Err _ ->
+            { tmp = "tmp"
+            , tab = DealsTab
+            , users = []
+            , loggedUser = Nothing
+            , deals = []
+            , goods = []
+            , authData = { username = "", password = "" }
+            , csrftoken = ""
+            }
     , Cmd.none
     )
 
@@ -347,41 +363,49 @@ update msg model =
                     ( model, Cmd.none )
 
 
-logout : String -> Cmd Msg
-logout token =
+post : String -> String -> Http.Body -> Http.Expect Msg -> Cmd Msg
+post url token body expect =
     Http.request
-        { url = "/api/logout"
+        { url = url
         , method = "POST"
         , headers = [ Http.header "X-CSRFToken" token ]
-        , body = Http.jsonBody logoutEncoder
-        , expect = Http.expectJson LogoutResponse logoutResponseDecoder
+        , body = body
+        , expect = expect
         , timeout = Nothing
         , tracker = Nothing
         }
 
 
-logoutEncoder =
-    JE.object
-        [ ( "logout", JE.bool True )
-        , ( "reqId", JE.int 1 )
-        ]
+logout : String -> Cmd Msg
+logout token =
+    let
+        logoutEncoder =
+            JE.object
+                [ ( "logout", JE.bool True )
+                , ( "reqId", JE.int 1 )
+                ]
 
+        logoutResponseDecoder =
+            J.field "logout" J.string
+                |> J.andThen
+                    (\res ->
+                        J.succeed <|
+                            case res of
+                                "OK" ->
+                                    LogoutDone
 
-logoutResponseDecoder =
-    J.field "logout" J.string
-        |> J.andThen
-            (\res ->
-                J.succeed <|
-                    case res of
-                        "OK" ->
-                            LogoutDone
+                                "FAIL" ->
+                                    LogoutDone
 
-                        "FAIL" ->
-                            LogoutDone
-
-                        _ ->
-                            LogoutFail
-            )
+                                _ ->
+                                    LogoutFail
+                    )
+    in
+    post
+        "/api/logout"
+        token
+        (Http.jsonBody logoutEncoder)
+        (Http.expectJson LogoutResponse logoutResponseDecoder)
 
 
 login : String -> { username : String, password : String } -> Cmd Msg
@@ -395,6 +419,22 @@ login token authData =
                 , ( "id", JE.string username )
                 , ( "pass", JE.string password )
                 ]
+
+        loginResponseDecoder : J.Decoder LoginResponseData
+        loginResponseDecoder =
+            J.field "login" J.string
+                |> J.andThen
+                    (\status ->
+                        case status of
+                            "OK" ->
+                                J.map LoginDone loggedUserDataDecoder
+
+                            "FAIL" ->
+                                J.succeed <| LoginFail "login failed"
+
+                            _ ->
+                                J.succeed <| LoginFail "some other error"
+                    )
     in
     Http.request
         { url = "/api/login"
@@ -405,23 +445,6 @@ login token authData =
         , timeout = Nothing
         , tracker = Nothing
         }
-
-
-loginResponseDecoder : J.Decoder LoginResponseData
-loginResponseDecoder =
-    J.field "login" J.string
-        |> J.andThen
-            (\status ->
-                case status of
-                    "OK" ->
-                        J.map LoginDone loggedUserDataDecoder
-
-                    "FAIL" ->
-                        J.succeed <| LoginFail "login failed"
-
-                    _ ->
-                        J.succeed <| LoginFail "some other error"
-            )
 
 
 type alias LoggedUser =
@@ -539,7 +562,12 @@ viewDeal goods loggedUser user deal =
             [ viewUserImg user
             , div [ class "deal-info" ]
                 [ p [ class "deal-info__p" ]
-                    [ text <| "№ " ++ String.fromInt deal.id ++ " " ++ (Maybe.withDefault "" deal.accepted |> formatDate)
+                    [ div
+                        [ class "deal-info__state-color"
+                        , style "background-color" <| dealstateColor deal.state
+                        ]
+                        []
+                    , text <| String.trim <| "№ " ++ String.fromInt deal.id ++ " " ++ (Maybe.withDefault "" deal.accepted |> formatDate)
                     ]
                 , p [ class "deal-info__p user__name" ]
                     [ text <| userFullname user ]
@@ -633,7 +661,7 @@ dealCounterpart loggedUser users deal =
 
 userFullname : User -> String
 userFullname user =
-    user.lastName ++ " " ++ user.firstName
+    user.lastName ++ " " ++ user.firstName |> String.trim
 
 
 formatDate : String -> String
