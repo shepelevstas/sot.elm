@@ -543,24 +543,27 @@ viewDealFull model deal =
                         ]
                     ]
                 , div [ class "card__content" ]
-                    [ case
-                        model.loggedUser
-                            |> Maybe.andThen
-                                (\loggedUser ->
-                                    dealCounterpart loggedUser model.users deal
-                                )
-                      of
+                    [ case model.loggedUser of
                         Nothing ->
-                            text "Other User Not Found"
+                            text "No Logged In User"
 
-                        Just otherUser ->
-                            viewUser otherUser
+                        Just loggedUser ->
+                            case dealCounterpart loggedUser model.users deal of
+                                Nothing ->
+                                    text "No Other User"
+
+                                Just otherUser ->
+                                    viewUser otherUser
+                                        [ div [ class "grow" ] []
+                                        , viewDealTotal loggedUser deal
+                                        ]
                     , p [] [ text deal.details ]
-                    , div []
+                    , div [ class "mb10" ]
                         (div [ class "dealgood-row dealgood-row--title" ]
                             [ span [ class "dealgood-row__name" ] [ text "name" ]
                             , span [ class "dealgood-row__price" ] [ text "price" ]
                             , span [ class "dealgood-row__q" ] [ text "q" ]
+                            , span [ class "dealgood-row__sum" ] [ text "sum" ]
                             ]
                             :: (let
                                     viewDealgood_ =
@@ -598,6 +601,7 @@ viewDealgood goods dealgood =
         [ span [ class "dealgood-row__name" ] [ text goodname ]
         , span [ class "dealgood-row__price" ] [ text <| String.fromFloat dealgood.price ]
         , span [ class "dealgood-row__q" ] [ text <| String.fromFloat dealgood.q ]
+        , span [ class "dealgood-row__sum" ] [ text <| String.fromFloat <| dealgood.q * dealgood.price ]
         ]
 
 
@@ -648,15 +652,20 @@ viewDeal goods loggedUser user deal =
                 ]
             ]
         , div [ class "grow deal__short" ] [ text <| dealShort goods deal ]
-        , let
-            ( cls, txt ) =
-                iif (loggedIsSeller loggedUser deal)
-                    ( " deal__total--income", "+" )
-                    ( "", "" )
-          in
-          div [ class <| "deal__total" ++ cls ]
-            [ text <| txt ++ (String.fromFloat <| dealTotal deal) ]
+        , viewDealTotal loggedUser deal
         ]
+
+
+viewDealTotal : User -> Deal -> Html Msg
+viewDealTotal loggedUser deal =
+    let
+        ( cls, txt ) =
+            iif (loggedIsSeller loggedUser deal)
+                ( " deal__total--income", "+" )
+                ( "", "" )
+    in
+    div [ class <| "deal__total" ++ cls ]
+        [ text <| txt ++ (String.fromFloat <| dealTotal deal) ]
 
 
 viewDealStatusIndicator : Deal -> Html Msg
@@ -675,17 +684,19 @@ viewDealTitle deal =
 
 viewUsersList : List User -> Html Msg
 viewUsersList users =
-    div [ class "users-list" ] (map viewUser users)
+    div [ class "users-list" ] (map (\u -> viewUser u []) users)
 
 
-viewUser : User -> Html Msg
-viewUser user =
+viewUser : User -> List (Html Msg) -> Html Msg
+viewUser user content =
     div [ class "user" ]
-        [ viewUserImg user
-        , span
+        ([ viewUserImg user
+         , span
             [ class "user__name" ]
             [ text (userFullname user) ]
-        ]
+         ]
+            ++ content
+        )
 
 
 viewUserImg : User -> Html Msg
@@ -706,8 +717,7 @@ viewLoggedUser loggedUser =
                 [ button [] [ text "Войти" ] ]
 
             Just user ->
-                [ viewUser user
-                , button [ onClick Logout ] [ text "Выйти" ]
+                [ viewUser user [ div [ class "grow" ] [], button [ onClick Logout ] [ text "Выйти" ] ]
                 ]
         )
 
@@ -779,6 +789,7 @@ iif bool a b =
         b
 
 
+dealShort : List Good -> Deal -> String
 dealShort goods deal =
     String.trim <|
         stripTags deal.details

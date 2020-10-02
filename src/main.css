@@ -114,6 +114,8 @@ body {
 
 .user {
   margin: 2px;
+  display: flex;
+  align-items: center;
 }
 
 .user__img {
@@ -265,6 +267,7 @@ body {
 .dealgood-row {
   display: flex;
   border-bottom: 1px solid #f3f3f3;
+  align-items: center;
 }
 .dealgood-row--title {
   color: lightgray;
@@ -277,4 +280,7 @@ body {
   flex: 1 1 50px;
   text-align: center;
 }
-
+.dealgood-row__sum {
+  flex: 1 1 50px;
+  text-align: right;
+}
