@@ -717,7 +717,10 @@ viewLoggedUser loggedUser =
                 [ button [] [ text "Войти" ] ]
 
             Just user ->
-                [ viewUser user [ div [ class "grow" ] [], button [ onClick Logout ] [ text "Выйти" ] ]
+                [ viewUser user
+                    [ div [ class "grow" ] []
+                    , button [ onClick Logout ] [ text "Выйти" ]
+                    ]
                 ]
         )
 
